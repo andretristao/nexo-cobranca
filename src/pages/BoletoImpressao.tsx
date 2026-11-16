@@ -11,16 +11,21 @@ type B = Boleto & { parcela: any; convenio_cobranca: Convenio };
 export default function BoletoImpressao() {
   const [sp] = useSearchParams();
   const [bols, setBols] = useState<B[] | null>(null);
+  const [erro, setErro] = useState("");
 
   useEffect(() => {
     const ids = (sp.get("ids") ?? "").split(",").filter(Boolean);
     supabase.from("boleto").select("*, convenio_cobranca(*), parcela(numero, negociacao(numero, cliente(*)))").in("id", ids).order("vencimento")
-      .then(({ data }) => setBols((data ?? []) as B[]));
+      .then(({ data, error }) => {
+        if (error) { console.error(error); setErro(`${error.message}${error.details ? " · " + error.details : ""}${error.hint ? " · " + error.hint : ""}`); }
+        setBols((data ?? []) as B[]);
+      });
   }, [sp]);
 
   useEffect(() => { if (bols?.length) setTimeout(() => window.print(), 600); }, [bols]);
+  if (erro) return <p style={{ padding: 20, color: "#c62828" }}>Erro ao carregar os boletos: {erro}</p>;
   if (!bols) return <p style={{ padding: 20 }}>Carregando…</p>;
-  if (!bols.length) return <p style={{ padding: 20 }}>Nenhum boleto encontrado (faça login no sistema e tente de novo).</p>;
+  if (!bols.length) return <p style={{ padding: 20 }}>Nenhum boleto encontrado ({(sp.get("ids") ?? "").split(",").filter(Boolean).length} solicitado(s)). Faça login no sistema e tente de novo.</p>;
 
   return (
     <div className="impressao">
