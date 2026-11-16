@@ -36,10 +36,10 @@ export default function NegociacaoDetalhe() {
 
   async function gerar() {
     setMsg("");
-    if (!sel.size) { setMsg("Marque as parcelas que deseja emitir."); return; }
+    if (!semBoleto.length) { setMsg("Marque parcelas que ainda não têm boleto."); return; }
     try {
-      const n = await emitirBoletos(parcelas.filter((p) => p.status === "aberta" && sel.has(p.id)).map((p) => p.id));
-      setMsg(n ? `${n} boleto(s) gerado(s).` : "As parcelas marcadas já têm boleto.");
+      const n = await emitirBoletos(semBoleto);
+      setMsg(`${n} boleto(s) gerado(s).`);
       setSel(new Set()); carregar();
     } catch (e) { setMsg(erroMsg(e)); }
   }
@@ -74,6 +74,7 @@ export default function NegociacaoDetalhe() {
   const abertas = parcelas.filter((p) => p.status === "aberta");
   const todasMarcadas = abertas.length > 0 && abertas.every((p) => sel.has(p.id));
   const boletosVivos = Object.values(boletos).filter((b) => !["pago", "baixado", "rejeitado"].includes(b.status));
+  const semBoleto = abertas.filter((p) => sel.has(p.id) && !boletosVivos.some((b) => b.parcela_id === p.id)).map((p) => p.id);
   const cancelaveis = boletosVivos.filter((b) => b.status === "gerado" && sel.has(b.parcela_id)).map((b) => b.id);
   const comBoleto = (sel.size ? boletosVivos.filter((b) => sel.has(b.parcela_id)) : boletosVivos).map((b) => b.id);
 
@@ -83,7 +84,7 @@ export default function NegociacaoDetalhe() {
         <h1>Negociação nº {neg.numero} <span className={`tag ${neg.status}`}>{neg.status}</span></h1>
         <div className="grupo">
           {comBoleto.length > 0 && <Link className="botao" to={`/imprimir/boletos?ids=${comBoleto.join(",")}`} target="_blank">{sel.size ? `Imprimir boletos marcados (${comBoleto.length})` : "Imprimir todos os boletos"}</Link>}
-          {podeEditar && neg.status === "ativa" && <button className="primario" disabled={!sel.size} onClick={gerar}>Gerar boletos das marcadas{sel.size ? ` (${sel.size})` : ""}</button>}
+          {podeEditar && neg.status === "ativa" && <button className="primario" disabled={!semBoleto.length} title={sel.size && !semBoleto.length ? "As parcelas marcadas já têm boleto" : ""} onClick={gerar}>Gerar boletos das marcadas{semBoleto.length ? ` (${semBoleto.length})` : ""}</button>}
           {podeEditar && cancelaveis.length > 0 && <button onClick={() => cancelarBoletos(cancelaveis)}>Cancelar boletos marcados ({cancelaveis.length})</button>}
           {podeEditar && neg.status === "ativa" && <button className="perigo" onClick={cancelar}>Cancelar negociação</button>}
         </div>
@@ -101,7 +102,7 @@ export default function NegociacaoDetalhe() {
       {msg && <div className="faixa">{msg}</div>}
       <div className="card">
         <h2>Parcelas</h2>
-        <p className="aviso">Marque as parcelas para gerar ou imprimir só os boletos que o cliente vai pagar agora.</p>
+        <p className="aviso">Marque as parcelas para gerar, imprimir ou cancelar só os boletos que o cliente vai pagar agora.{sel.size > 0 && !semBoleto.length && " As parcelas marcadas já têm boleto: use Imprimir ou Cancelar boletos marcados."}</p>
         <table>
           <thead><tr><th>{abertas.length > 0 && <input type="checkbox" title="Marcar todas as abertas" checked={todasMarcadas} onChange={() => setSel(todasMarcadas ? new Set() : new Set(abertas.map((p) => p.id)))} />}</th><th>#</th><th>Vencimento</th><th className="num">Valor</th><th>Situação</th><th>Boleto</th><th className="num">Pago</th><th>Pago em</th><th /></tr></thead>
           <tbody>{parcelas.map((p) => {
