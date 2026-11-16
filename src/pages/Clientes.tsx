@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/auth";
 import { brl, docFmt } from "../lib/format";
+import { casa } from "../lib/busca";
 
 interface Linha { cliente_id: string; nome: string; documento: string; negociacoes_ativas: number; saldo_aberto: number; valor_vencido: number }
 
@@ -13,24 +14,21 @@ export default function Clientes() {
   const [linhas, setLinhas] = useState<Linha[]>([]);
   const [carregando, setCarregando] = useState(true);
 
+  const [todos, setTodos] = useState<Linha[]>([]);
   useEffect(() => {
-    const t = setTimeout(async () => {
-      let q = supabase.from("vw_clientes_sintetico").select("*").order("nome").limit(200);
-      const b = busca.trim();
-      if (b) {
-        const dig = b.replace(/\D/g, "");
-        q = dig.length >= 3 && dig.length === b.replace(/[.\-/\s]/g, "").length ? q.ilike("documento", `%${dig}%`) : q.ilike("nome", `%${b}%`);
-      }
-      const { data } = await q;
-      setLinhas((data ?? []) as Linha[]); setCarregando(false);
-    }, 250);
-    return () => clearTimeout(t);
-  }, [busca]);
+    supabase.from("vw_clientes_sintetico").select("*").order("nome").limit(5000)
+      .then(({ data }) => { setTodos((data ?? []) as Linha[]); setCarregando(false); });
+  }, []);
+  useEffect(() => {
+    const b = busca.trim();
+    const dig = b.replace(/\D/g, "");
+    setLinhas(!b ? todos : todos.filter((c) => casa(c.nome, b) || (dig.length >= 3 && c.documento.includes(dig))));
+  }, [busca, todos]);
 
   return (
     <>
       <div className="topo"><h1>Clientes</h1>{podeEditar && <Link className="botao primario" to="/clientes/novo">+ Novo cliente</Link>}</div>
-      <input className="busca" placeholder="Buscar por nome ou CPF/CNPJ" value={busca} onChange={(e) => setBusca(e.target.value)} />
+      <input className="busca" placeholder="Buscar por nome ou CPF/CNPJ (acentos não importam)" value={busca} onChange={(e) => setBusca(e.target.value)} />
       <div className="card">
         {carregando ? <p>Carregando…</p> : linhas.length === 0 ? <p className="vazio">Nenhum cliente encontrado.</p> : (
           <table>

@@ -94,6 +94,7 @@ export default function NegociacaoDetalhe() {
         <div><span>Data</span>{dataBR(neg.data_negociacao)}</div>
         <div><span>Principal</span>{brl(neg.valor_principal)}</div>
         <div><span>Total</span>{brl(neg.valor_total)}</div>
+        <div><span>Juros</span>{Number(neg.taxa_juros_mes ?? 0) > 0 ? `${String(neg.taxa_juros_mes).replace(".", ",")}% a.m. (${neg.sistema_amortizacao === "simples" ? "simples" : "Price"}) · ${brl(Number(neg.valor_total) - Number(neg.valor_principal))}` : "Sem juros"}</div>
         <div><span>Pago</span>{brl(pago)}</div>
         <div><span>Em aberto</span>{brl(aberto)}</div>
         <div><span>Vencido</span><b className={vencido > 0 ? "vermelho" : ""}>{brl(vencido)}</b></div>

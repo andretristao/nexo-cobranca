@@ -83,3 +83,17 @@ code.mini { font-size: 11px; }
   body { background: #fff; } .app { display: block; }
   @page { size: A4; margin: 10mm; }
 }
+.autocompletar { position: relative; }
+.sugestoes { position: absolute; z-index: 5; left: 0; right: 0; top: 100%; margin: 4px 0 0; padding: 4px; list-style: none; background: #fff; border: 1px solid var(--borda); border-radius: 8px; box-shadow: 0 8px 24px #0002; max-height: 320px; overflow: auto; }
+.sugestoes li { padding: 8px 10px; border-radius: 6px; cursor: pointer; color: var(--texto); font-size: 14px; }
+.sugestoes li small { color: var(--sub); margin-left: 6px; }
+.sugestoes li.ativo { background: #eef3ff; }
+.cliente-escolhido { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border: 1px solid #cfdcff; background: #f5f8ff; border-radius: 6px; color: var(--texto); font-size: 14px; }
+.cliente-escolhido small { color: var(--sub); }
+.dica { color: var(--sub); margin-top: -6px; }
+.resumo-previa { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 10px; }
+.resumo-previa span { display: block; font-size: 12px; color: var(--sub); } .resumo-previa b { font-size: 16px; }
+.previa { max-height: none; overflow: visible; }
+.previa-tabela { max-height: 320px; overflow: auto; }
+.previa-tabela thead th { position: sticky; top: 0; background: #fff; }
+.previa-tabela tfoot td { position: sticky; bottom: 0; background: #fff; }

@@ -13,14 +13,14 @@ export interface Cliente {
 export interface Negociacao {
   id: string; entidade_id: string; cliente_id: string; numero: number; descricao: string | null;
   data_negociacao: string; valor_principal: number; valor_total: number; qtd_parcelas: number;
-  primeiro_vencimento: string; status: "ativa" | "quitada" | "cancelada" | "renegociada";
+  primeiro_vencimento: string; taxa_juros_mes?: number; sistema_amortizacao?: string; status: "ativa" | "quitada" | "cancelada" | "renegociada";
   cliente?: Cliente;
 }
 
 export interface Parcela {
   id: string; entidade_id: string; negociacao_id: string; numero: number; vencimento: string; valor: number;
   status: "aberta" | "paga" | "cancelada" | "renegociada"; valor_pago: number | null;
-  data_pagamento: string | null; forma_baixa: "retorno" | "manual" | null;
+  data_pagamento: string | null; forma_baixa: "retorno" | "manual" | null; valor_juros?: number; valor_amortizacao?: number | null;
 }
 
 export interface Convenio {

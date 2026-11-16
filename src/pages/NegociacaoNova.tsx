@@ -1,71 +1,55 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useMemo, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/auth";
 import { brl, dataBR, erroMsg, hojeISO } from "../lib/format";
+import { addMes, calcularParcelas } from "../lib/juros";
 import { emitirBoletos } from "../lib/emissao";
-import type { Cliente } from "../lib/tipos";
+import ClienteBusca from "../components/ClienteBusca";
 
-const addMes = (iso: string, m: number) => {
-  const [y, mo, d] = iso.split("-").map(Number);
-  const dt = new Date(Date.UTC(y, mo - 1 + m, 1));
-  const ult = new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth() + 1, 0)).getUTCDate();
-  dt.setUTCDate(Math.min(d, ult));
-  return dt.toISOString().slice(0, 10);
-};
+const num = (s: string) => Number(s.replace(/\./g, "").replace(",", ".")) || 0;
 
 export default function NegociacaoNova() {
   const [sp] = useSearchParams();
   const nav = useNavigate();
   const { entidade } = useAuth();
-  const [clientes, setClientes] = useState<Cliente[]>([]);
-  const [busca, setBusca] = useState("");
   const [clienteId, setClienteId] = useState(sp.get("cliente") ?? "");
   const [descricao, setDescricao] = useState("");
   const [principal, setPrincipal] = useState("");
-  const [total, setTotal] = useState("");
+  const [taxa, setTaxa] = useState("0");
+  const [sistema, setSistema] = useState<"price" | "simples">("price");
   const [qtd, setQtd] = useState("10");
   const [venc, setVenc] = useState(addMes(hojeISO(), 1));
   const [gerarBoletos, setGerarBoletos] = useState(true);
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
 
-  useEffect(() => {
-    let q = supabase.from("cliente").select("*").eq("ativo", true).order("nome").limit(50);
-    if (busca) q = q.ilike("nome", `%${busca}%`);
-    if (clienteId && !busca) q = supabase.from("cliente").select("*").eq("id", clienteId);
-    q.then(({ data }) => setClientes((data ?? []) as Cliente[]));
-  }, [busca, clienteId]);
-
-  const vTotal = Number((total || principal).replace(",", ".")) || 0;
+  const vp = num(principal);
+  const tx = Math.max(0, num(taxa));
   const n = Math.max(1, Math.min(120, Number(qtd) || 1));
-  const previa = useMemo(() => {
-    const v = Math.floor((vTotal / n) * 100) / 100;
-    return Array.from({ length: n }, (_, i) => ({
-      numero: i + 1, vencimento: addMes(venc, i),
-      valor: i === n - 1 ? Math.round((vTotal - v * (n - 1)) * 100) / 100 : v,
-    }));
-  }, [vTotal, n, venc]);
+  const parcelas = useMemo(() => calcularParcelas(vp, tx, n, venc, sistema), [vp, tx, n, venc, sistema]);
+  const total = parcelas.reduce((a, p) => a + p.valor, 0);
+  const totalJuros = parcelas.reduce((a, p) => a + p.juros, 0);
 
   async function salvar(e: React.FormEvent) {
     e.preventDefault(); setErro("");
-    if (!clienteId) { setErro("Selecione o cliente."); return; }
-    const vp = Number(principal.replace(",", "."));
-    if (!(vp > 0) || !(vTotal > 0)) { setErro("Informe os valores."); return; }
+    if (!clienteId) { setErro("Escolha o cliente."); return; }
+    if (!(vp > 0)) { setErro("Informe o valor emprestado."); return; }
     setSalvando(true);
     try {
       const { data: neg, error } = await supabase.from("negociacao").insert({
-        entidade_id: entidade!.id, cliente_id: clienteId, descricao, valor_principal: vp, valor_total: vTotal,
-        qtd_parcelas: n, primeiro_vencimento: venc,
+        entidade_id: entidade!.id, cliente_id: clienteId, descricao, valor_principal: vp, valor_total: Math.round(total * 100) / 100,
+        qtd_parcelas: n, primeiro_vencimento: venc, taxa_juros_mes: tx, sistema_amortizacao: sistema,
       }).select().single();
       if (error) throw error;
-      const { error: e2 } = await supabase.from("parcela").insert(previa.map((p) => ({
+      const { error: e2 } = await supabase.from("parcela").insert(parcelas.map((p) => ({
         entidade_id: entidade!.id, negociacao_id: neg.id, numero: p.numero, vencimento: p.vencimento, valor: p.valor,
+        valor_juros: p.juros, valor_amortizacao: p.amortizacao,
       })));
       if (e2) throw e2;
       if (gerarBoletos) {
         const { data: ps } = await supabase.from("parcela").select("id").eq("negociacao_id", neg.id);
-        try { await emitirBoletos((ps ?? []).map((p) => p.id)); } catch (eb) { alertaSilencioso(eb); }
+        try { await emitirBoletos((ps ?? []).map((p) => p.id)); } catch (eb) { console.warn("Boletos não gerados:", eb); }
       }
       nav(`/negociacoes/${neg.id}`);
     } catch (err) { setErro(erroMsg(err)); } finally { setSalvando(false); }
@@ -76,24 +60,41 @@ export default function NegociacaoNova() {
       <h1>Nova negociação</h1>
       <form className="card form" onSubmit={salvar}>
         <div className="grade">
-          <label className="larga">Buscar cliente<input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Digite o nome" /></label>
-          <label className="larga">Cliente *
-            <select required value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
-              <option value="">Selecione…</option>
-              {clientes.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
-            </select>
+          <label className="inteira">Cliente *
+            <ClienteBusca valor={clienteId} onChange={setClienteId} />
           </label>
+          <small className="inteira dica">Não encontrou? <Link to="/clientes/novo">Cadastre o cliente</Link> e volte aqui.</small>
           <label className="inteira">Descrição / finalidade<input value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder="Ex.: Microcrédito para capital de giro" /></label>
-          <label>Valor principal (R$) *<input required inputMode="decimal" value={principal} onChange={(e) => setPrincipal(e.target.value)} /></label>
-          <label>Valor total a pagar (R$)<input inputMode="decimal" value={total} onChange={(e) => setTotal(e.target.value)} placeholder="igual ao principal" /></label>
+          <label>Valor emprestado (R$) *<input required inputMode="decimal" value={principal} onChange={(e) => setPrincipal(e.target.value)} placeholder="15.000,00" /></label>
+          <label>Juros (% ao mês)<input inputMode="decimal" value={taxa} onChange={(e) => setTaxa(e.target.value)} placeholder="0 = sem juros" /></label>
           <label>Nº de parcelas *<input required type="number" min={1} max={120} value={qtd} onChange={(e) => setQtd(e.target.value)} /></label>
           <label>1º vencimento *<input required type="date" value={venc} onChange={(e) => setVenc(e.target.value)} /></label>
-          <label className="check inteira"><input type="checkbox" checked={gerarBoletos} onChange={(e) => setGerarBoletos(e.target.checked)} /> Gerar os boletos das parcelas ao salvar</label>
+          {tx > 0 && (
+            <label className="larga">Forma de cálculo
+              <select value={sistema} onChange={(e) => setSistema(e.target.value as typeof sistema)}>
+                <option value="price">Tabela Price (parcelas iguais, juros sobre o saldo)</option>
+                <option value="simples">Juros simples sobre o valor emprestado</option>
+              </select>
+            </label>
+          )}
+          <label className="check inteira"><input type="checkbox" checked={gerarBoletos} onChange={(e) => setGerarBoletos(e.target.checked)} /> Gerar os boletos de todas as parcelas ao salvar (desmarque para gerar depois, só das que o cliente for pagar)</label>
         </div>
-        {vTotal > 0 && (
+        {parcelas.length > 0 && (
           <div className="previa">
-            <b>Prévia: {n} parcela(s), total {brl(vTotal)}</b>
-            <table><tbody>{previa.map((p) => <tr key={p.numero}><td>{p.numero}</td><td>{dataBR(p.vencimento)}</td><td className="num">{brl(p.valor)}</td></tr>)}</tbody></table>
+            <div className="resumo-previa">
+              <div><span>Emprestado</span><b>{brl(vp)}</b></div>
+              <div><span>Juros totais</span><b>{brl(totalJuros)}</b></div>
+              <div><span>Total a pagar</span><b>{brl(total)}</b></div>
+              <div><span>Parcelas</span><b>{n}x de {brl(parcelas[0].valor)}</b></div>
+            </div>
+            <div className="previa-tabela"><table>
+              <thead><tr><th>#</th><th>Vencimento</th><th className="num">Amortização</th><th className="num">Juros</th><th className="num">Parcela</th><th className="num">Saldo devedor</th></tr></thead>
+              <tbody>{parcelas.map((p) => (
+                <tr key={p.numero}><td>{p.numero}</td><td>{dataBR(p.vencimento)}</td><td className="num">{brl(p.amortizacao)}</td>
+                  <td className="num">{brl(p.juros)}</td><td className="num"><b>{brl(p.valor)}</b></td><td className="num">{brl(p.saldo)}</td></tr>
+              ))}</tbody>
+              <tfoot><tr><td colSpan={2}><b>Total</b></td><td className="num"><b>{brl(vp)}</b></td><td className="num"><b>{brl(totalJuros)}</b></td><td className="num"><b>{brl(total)}</b></td><td /></tr></tfoot>
+            </table></div>
           </div>
         )}
         {erro && <p className="erro">{erro}</p>}
@@ -102,5 +103,3 @@ export default function NegociacaoNova() {
     </>
   );
 }
-
-function alertaSilencioso(e: unknown) { console.warn("Boletos não gerados:", e); }
