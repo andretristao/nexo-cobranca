@@ -16,6 +16,8 @@ export default function NegociacaoDetalhe() {
   const [baixa, setBaixa] = useState<Parcela | null>(null);
   const [baixaValor, setBaixaValor] = useState("");
   const [baixaData, setBaixaData] = useState(hojeISO());
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const alternar = (pid: string) => setSel((s) => { const n = new Set(s); if (n.has(pid)) n.delete(pid); else n.add(pid); return n; });
 
   const carregar = useCallback(async () => {
     const { data: n } = await supabase.from("negociacao").select("*, cliente(*)").eq("id", id!).single();
@@ -34,10 +36,11 @@ export default function NegociacaoDetalhe() {
 
   async function gerar() {
     setMsg("");
+    if (!sel.size) { setMsg("Marque as parcelas que deseja emitir."); return; }
     try {
-      const n = await emitirBoletos(parcelas.filter((p) => p.status === "aberta").map((p) => p.id));
-      setMsg(n ? `${n} boleto(s) gerado(s).` : "Todas as parcelas abertas já têm boleto.");
-      carregar();
+      const n = await emitirBoletos(parcelas.filter((p) => p.status === "aberta" && sel.has(p.id)).map((p) => p.id));
+      setMsg(n ? `${n} boleto(s) gerado(s).` : "As parcelas marcadas já têm boleto.");
+      setSel(new Set()); carregar();
     } catch (e) { setMsg(erroMsg(e)); }
   }
 
@@ -48,6 +51,13 @@ export default function NegociacaoDetalhe() {
     });
     setMsg(error ? erroMsg(error) : `Parcela ${baixa.numero} baixada manualmente.`);
     setBaixa(null); carregar();
+  }
+
+  async function cancelarBoletos(ids: string[]) {
+    if (!confirm(`Cancelar ${ids.length} boleto(s) que ainda não foram enviados ao banco?`)) return;
+    const { error } = await supabase.from("boleto").update({ status: "cancelado", ocorrencia_ultima: "Cancelado antes da remessa" }).in("id", ids).eq("status", "gerado");
+    setMsg(error ? erroMsg(error) : `${ids.length} boleto(s) cancelado(s). As parcelas continuam abertas.`);
+    setSel(new Set()); carregar();
   }
 
   async function cancelar() {
@@ -61,16 +71,21 @@ export default function NegociacaoDetalhe() {
   const pago = parcelas.reduce((a, p) => a + Number(p.valor_pago ?? 0), 0);
   const aberto = parcelas.filter((p) => p.status === "aberta").reduce((a, p) => a + Number(p.valor), 0);
   const vencido = parcelas.filter((p) => p.status === "aberta" && p.vencimento < hoje).reduce((a, p) => a + Number(p.valor), 0);
-  const comBoleto = Object.values(boletos).filter((b) => b.status !== "pago").map((b) => b.id);
+  const abertas = parcelas.filter((p) => p.status === "aberta");
+  const todasMarcadas = abertas.length > 0 && abertas.every((p) => sel.has(p.id));
+  const boletosVivos = Object.values(boletos).filter((b) => !["pago", "baixado", "rejeitado"].includes(b.status));
+  const cancelaveis = boletosVivos.filter((b) => b.status === "gerado" && sel.has(b.parcela_id)).map((b) => b.id);
+  const comBoleto = (sel.size ? boletosVivos.filter((b) => sel.has(b.parcela_id)) : boletosVivos).map((b) => b.id);
 
   return (
     <>
       <div className="topo">
         <h1>Negociação nº {neg.numero} <span className={`tag ${neg.status}`}>{neg.status}</span></h1>
         <div className="grupo">
-          {comBoleto.length > 0 && <Link className="botao" to={`/imprimir/boletos?ids=${comBoleto.join(",")}`} target="_blank">Imprimir boletos</Link>}
-          {podeEditar && neg.status === "ativa" && <button onClick={gerar}>Gerar boletos</button>}
-          {podeEditar && neg.status === "ativa" && <button className="perigo" onClick={cancelar}>Cancelar</button>}
+          {comBoleto.length > 0 && <Link className="botao" to={`/imprimir/boletos?ids=${comBoleto.join(",")}`} target="_blank">{sel.size ? `Imprimir boletos marcados (${comBoleto.length})` : "Imprimir todos os boletos"}</Link>}
+          {podeEditar && neg.status === "ativa" && <button className="primario" disabled={!sel.size} onClick={gerar}>Gerar boletos das marcadas{sel.size ? ` (${sel.size})` : ""}</button>}
+          {podeEditar && cancelaveis.length > 0 && <button onClick={() => cancelarBoletos(cancelaveis)}>Cancelar boletos marcados ({cancelaveis.length})</button>}
+          {podeEditar && neg.status === "ativa" && <button className="perigo" onClick={cancelar}>Cancelar negociação</button>}
         </div>
       </div>
       <div className="card dados">
@@ -86,13 +101,15 @@ export default function NegociacaoDetalhe() {
       {msg && <div className="faixa">{msg}</div>}
       <div className="card">
         <h2>Parcelas</h2>
+        <p className="aviso">Marque as parcelas para gerar ou imprimir só os boletos que o cliente vai pagar agora.</p>
         <table>
-          <thead><tr><th>#</th><th>Vencimento</th><th className="num">Valor</th><th>Situação</th><th>Boleto</th><th className="num">Pago</th><th>Pago em</th><th /></tr></thead>
+          <thead><tr><th>{abertas.length > 0 && <input type="checkbox" title="Marcar todas as abertas" checked={todasMarcadas} onChange={() => setSel(todasMarcadas ? new Set() : new Set(abertas.map((p) => p.id)))} />}</th><th>#</th><th>Vencimento</th><th className="num">Valor</th><th>Situação</th><th>Boleto</th><th className="num">Pago</th><th>Pago em</th><th /></tr></thead>
           <tbody>{parcelas.map((p) => {
             const b = boletos[p.id];
             const atrasada = p.status === "aberta" && p.vencimento < hoje;
             return (
-              <tr key={p.id}>
+              <tr key={p.id} className={sel.has(p.id) ? "marcada" : ""}>
+                <td>{p.status === "aberta" && <input type="checkbox" checked={sel.has(p.id)} onChange={() => alternar(p.id)} />}</td>
                 <td>{p.numero}</td><td>{dataBR(p.vencimento)}</td><td className="num">{brl(p.valor)}</td>
                 <td><span className={`tag ${atrasada ? "atrasada" : p.status}`}>{atrasada ? "atrasada" : p.status}</span></td>
                 <td>{b ? <><small>{STATUS_BOLETO[b.status]}</small><br /><code className="mini">{b.nosso_numero}</code></> : "—"}</td>

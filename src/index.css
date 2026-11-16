@@ -33,6 +33,8 @@ label.check input { width: auto; }
 table { width: 100%; border-collapse: collapse; } th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--borda); vertical-align: top; }
 th { font-size: 12px; color: var(--sub); font-weight: 600; } .num { text-align: right; white-space: nowrap; }
 tfoot td { border-top: 2px solid var(--borda); }
+tr.marcada td { background: #eef3ff; }
+td input[type=checkbox], th input[type=checkbox] { width: auto; }
 tr.clicavel { cursor: pointer; } tr.clicavel:hover td { background: #f3f6ff; }
 .vermelho { color: var(--verm); } .vazio { color: var(--sub); }
 .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }

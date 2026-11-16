@@ -14,7 +14,7 @@ export async function emitirBoletos(parcelaIds: string[]): Promise<number> {
   const conv = await convenioAtivo();
   if (!conv) throw new Error("Cadastre o convênio bancário em Configurações antes de emitir boletos.");
   const { data: parcelas, error } = await supabase.from("parcela")
-    .select("id, numero, vencimento, valor, status, negociacao(numero)").in("id", parcelaIds).eq("status", "aberta");
+    .select("id, numero, vencimento, valor, status, negociacao(numero)").in("id", parcelaIds).eq("status", "aberta").order("vencimento").order("numero");
   if (error) throw error;
   const { data: existentes } = await supabase.from("boleto").select("parcela_id")
     .in("parcela_id", parcelaIds).in("status", ["gerado", "enviado", "registrado", "pago"]);
