@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/auth";
 import { brl, dataBR } from "../lib/format";
@@ -7,6 +7,7 @@ import type { Negociacao } from "../lib/tipos";
 
 export default function Negociacoes() {
   const { podeEditar } = useAuth();
+  const nav = useNavigate();
   const [status, setStatus] = useState("ativa");
   const [negs, setNegs] = useState<Negociacao[]>([]);
 
@@ -28,7 +29,7 @@ export default function Negociacoes() {
         {negs.length === 0 ? <p className="vazio">Nenhuma negociação.</p> : (
           <table><thead><tr><th>Nº</th><th>Cliente</th><th>Data</th><th>Descrição</th><th className="num">Valor total</th><th>Parcelas</th><th>Situação</th></tr></thead>
             <tbody>{negs.map((n) => (
-              <tr key={n.id}><td><Link to={`/negociacoes/${n.id}`}>{n.numero}</Link></td><td>{n.cliente?.nome}</td>
+              <tr key={n.id} className="clicavel" onClick={() => nav(`/negociacoes/${n.id}`)}><td><Link to={`/negociacoes/${n.id}`}>{n.numero}</Link></td><td>{n.cliente?.nome}</td>
                 <td>{dataBR(n.data_negociacao)}</td><td>{n.descricao}</td><td className="num">{brl(n.valor_total)}</td>
                 <td>{n.qtd_parcelas}x</td><td><span className={`tag ${n.status}`}>{n.status}</span></td></tr>
             ))}</tbody></table>

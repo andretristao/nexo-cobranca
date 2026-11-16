@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/auth";
 import { brl, docFmt } from "../lib/format";
@@ -8,6 +8,7 @@ interface Linha { cliente_id: string; nome: string; documento: string; negociaco
 
 export default function Clientes() {
   const { podeEditar } = useAuth();
+  const nav = useNavigate();
   const [busca, setBusca] = useState("");
   const [linhas, setLinhas] = useState<Linha[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -35,7 +36,7 @@ export default function Clientes() {
           <table>
             <thead><tr><th>Nome</th><th>CPF/CNPJ</th><th className="num">Negociações ativas</th><th className="num">Saldo aberto</th><th className="num">Vencido</th></tr></thead>
             <tbody>{linhas.map((c) => (
-              <tr key={c.cliente_id}>
+              <tr key={c.cliente_id} className="clicavel" onClick={() => nav(`/clientes/${c.cliente_id}`)}>
                 <td><Link to={`/clientes/${c.cliente_id}`}>{c.nome}</Link></td>
                 <td>{docFmt(c.documento)}</td>
                 <td className="num">{c.negociacoes_ativas}</td>
