@@ -1,0 +1,42 @@
+# Backup diário do banco (TR 1.5.3) + acesso diário para o Supabase Free não pausar o projeto.
+# Segredos necessários (Settings → Secrets and variables → Actions):
+#   SUPABASE_DB_URL   = connection string do Postgres (Session pooler), com a senha do banco
+#   SUPABASE_URL      = https://SEU-PROJETO.supabase.co
+#   SUPABASE_ANON_KEY = chave publishable/anon
+name: Backup diário
+
+on:
+  schedule:
+    - cron: "15 6 * * *"   # 03h15 em Brasília
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Manter o projeto ativo (ping na API)
+        run: |
+          curl -sf "${{ secrets.SUPABASE_URL }}/rest/v1/entidade?select=id&limit=1" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" -o /dev/null && echo "API ok"
+
+      - name: Instalar cliente PostgreSQL 17
+        run: |
+          sudo apt-get install -y -q postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -q postgresql-client-17
+
+      - name: Gerar backup (dados + estrutura do schema public)
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          DATA=$(date -u +%Y-%m-%d)
+          /usr/lib/postgresql/17/bin/pg_dump "$DB_URL" --schema=public --no-owner --no-privileges -Fc -f "nexo-cobranca-$DATA.dump"
+          /usr/lib/postgresql/17/bin/pg_dump "$DB_URL" --schema=auth --data-only --table=auth.users --no-owner -Fc -f "nexo-cobranca-auth-$DATA.dump"
+          ls -lh *.dump
+
+      - name: Guardar backup (30 dias)
+        uses: actions/upload-artifact@v4
+        with:
+          name: backup-${{ github.run_id }}
+          path: "*.dump"
+          retention-days: 30
